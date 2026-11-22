@@ -9,6 +9,8 @@ void sched_init();
 
 task_t sched_submit(uthread_routine entry, void* argument);
 
+task_t sched_try_submit(uthread_routine entry, void* argument);
+
 void sched_start();
 
 void sched_wait();

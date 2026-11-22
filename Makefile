@@ -14,13 +14,23 @@ CFLAGS   += -Wall -Werror
 CFLAGS   += -fno-omit-frame-pointer
 CFLAGS   += $(OPTIMIZATION_LEVEL)
 CFLAGS   += $(SANITIZERS)
+CFLAGS   += $(CFLAGS_EXTRA)
 
 LDFLAGS   = $(CFLAGS)
 
-SRCS     := $(shell find source -iname '*.c') $(shell find source -iname '*.S')
+to_objs   = $(patsubst $(SRC_DIR)/%.S, $(OBJ_DIR)/%.o, $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(1)))
 
-OBJS     := $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
-OBJS     := $(patsubst $(SRC_DIR)/%.S, $(OBJ_DIR)/%.o, $(OBJS))
+# Библиотека корутин
+LIB_SRCS := $(shell find $(SRC_DIR)/coroed -iname '*.c') $(shell find $(SRC_DIR)/coroed -iname '*.S')
+LIB_OBJS := $(call to_objs, $(LIB_SRCS))
+
+# Тесты
+TEST_SRCS := $(SRC_DIR)/main.c $(wildcard $(SRC_DIR)/test_*.c)
+TEST_OBJS := $(call to_objs, $(TEST_SRCS))
+
+# HTTP: общий разбор запросов и сервер на корутинах
+HTTP_OBJS          := $(OBJ_DIR)/http/http.o
+COROED_SERVER_OBJS := $(OBJ_DIR)/http/coroed_server.o
 
 TARGET    = app
 
@@ -29,12 +39,17 @@ run: $(BIN_DIR)/$(TARGET)
 
 compile: clean $(BIN_DIR)/$(TARGET)
 
+server: $(BIN_DIR)/coroed_server
+
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -rf ./**/*.o
 
-$(BIN_DIR)/$(TARGET): $(BIN_DIR) $(OBJ_DIR) $(OBJS)
-	$(CC) $(OBJS) -o $@ $(LDFLAGS)
+$(BIN_DIR)/$(TARGET): $(BIN_DIR) $(OBJ_DIR) $(LIB_OBJS) $(HTTP_OBJS) $(TEST_OBJS)
+	$(CC) $(LIB_OBJS) $(HTTP_OBJS) $(TEST_OBJS) -o $@ $(LDFLAGS)
+
+$(BIN_DIR)/coroed_server: $(BIN_DIR) $(OBJ_DIR) $(LIB_OBJS) $(HTTP_OBJS) $(COROED_SERVER_OBJS)
+	$(CC) $(LIB_OBJS) $(HTTP_OBJS) $(COROED_SERVER_OBJS) -o $@ $(LDFLAGS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	mkdir -p $(shell dirname $@)
@@ -71,5 +86,6 @@ info:
 	$(info LDFLAGS   = $(LDFLAGS))
 	$(info SRC_DIR   = $(SRC_DIR))
 	$(info BUILD_DIR = $(BUILD_DIR))
-	$(info SRCS      = $(SRCS))
-	$(info OBJS      = $(OBJS))
+	$(info LIB_SRCS  = $(LIB_SRCS))
+	$(info TEST_SRCS = $(TEST_SRCS))
+	$(info LIB_OBJS  = $(LIB_OBJS))

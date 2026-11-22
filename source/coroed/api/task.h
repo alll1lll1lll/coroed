@@ -109,6 +109,13 @@ void task_wake(struct task* task);
 task_t task_submit(struct task* caller, uthread_routine entry, void* argument);
 
 /**
+ * Попробовать создать дочерний файбер. В отличие от
+ * `task_submit` не падает, если свободных слотов нет,
+ * а возвращает хэндл с `task == NULL`.
+ */
+task_t task_try_submit(struct task* caller, uthread_routine entry, void* argument);
+
+/**
  * Объявить файбер. Используется в заголовочных файлах.
  */
 #define TASK_DECLARE(name, type, argument)                                 \

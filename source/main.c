@@ -18,6 +18,7 @@ void test_event();
 void test_print();
 void test_park();
 void test_io();
+void test_http();
 
 int main() {
   log_init();
@@ -28,6 +29,7 @@ int main() {
       {  "print",   test_print},
       {   "park",    test_park},
       {     "io",      test_io},
+      {   "http",    test_http},
       {     NULL,         NULL},
   };
 

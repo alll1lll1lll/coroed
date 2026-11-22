@@ -17,12 +17,20 @@
 #include "poller.h"
 #include "uthread.h"
 
+/**
+ * Лимит задач можно переопределить при сборке:
+ * `make CFLAGS_EXTRA=-DCOROED_MAX_TASKS=2048`.
+ */
+#ifndef COROED_MAX_TASKS
+#define COROED_MAX_TASKS 512
+#endif
+
 enum {
   /**
    * Максимальное количество файберов, которое может
    * одновременно выполняться на планировщике.
    */
-  SCHED_THREADS_LIMIT = 512,
+  SCHED_THREADS_LIMIT = COROED_MAX_TASKS,
 
   /**
    * Количество рабочих потоков для исполнения файберов.
@@ -278,12 +286,23 @@ struct task* sched_acquire_next() {
 
     for (size_t i = 0; i < SCHED_THREADS_LIMIT; ++i) {
       struct task* task = &tasks[next_task_index];
+
+      // Планирование round-robin. Индекс сдвигаем всегда: в
+      // исходной версии он сдвигался только после успешного
+      // `try_lock`, и занятый слот (например, исполняющаяся
+      // задача) проверялся повторно до конца прохода.
+      next_task_index = (next_task_index + 1) % SCHED_THREADS_LIMIT;
+
+      // Дешевая проверка без захвата лока: большинство слотов
+      // не RUNNABLE, и атомарная запись в их лок лишь гоняла бы
+      // кэш-линии между ядрами. Под локом состояние
+      // перепроверяется.
+      if (__atomic_load_n(&task->state, __ATOMIC_RELAXED) != UTHREAD_RUNNABLE) {
+        continue;
+      }
       if (!spinlock_try_lock(&task->lock)) {
         continue;
       }
-
-      // Планирование round-robin
-      next_task_index = (next_task_index + 1) % SCHED_THREADS_LIMIT;
 
       if (task->thread != NULL && task->state == UTHREAD_RUNNABLE) {
         spinlock_unlock(&tasks_lock);
@@ -358,6 +377,11 @@ task_t task_submit(struct task* caller, uthread_routine entry, void* argument) {
   (void)caller;  // Может быть полезно.
   task_t child = sched_submit(*entry, argument);
   return child;
+}
+
+task_t task_try_submit(struct task* caller, uthread_routine entry, void* argument) {
+  (void)caller;
+  return sched_try_submit(entry, argument);
 }
 
 task_t sched_try_submit(void (*entry)(), void* argument) {
