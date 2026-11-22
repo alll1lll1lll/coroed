@@ -3,11 +3,21 @@
 #include <stdatomic.h>
 
 #include "coroed/api/task.h"
+#include "coroed/core/spinlock.h"
 
 /**
  * Синтаксический сахар для использования в теле файбера.
  */
 #define EVENT_WAIT(event) event_wait(__self, (event))
+
+/**
+ * Узел очереди ожидающих событие файберов. Живет на стеке
+ * ожидающего файбера: стек сохраняется, пока файбер припаркован.
+ */
+struct event_waiter {
+  struct task* task;
+  struct event_waiter* next;
+};
 
 /**
  * Примитив синхронихации `Event`.
@@ -20,6 +30,8 @@
  */
 struct event {
   atomic_bool is_fired;
+  struct spinlock lock;           // Защищает `waiters`
+  struct event_waiter* waiters;   // Припаркованные файберы
 };
 
 /**

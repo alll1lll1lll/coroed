@@ -86,6 +86,24 @@ void task_yield(struct task* caller);
 void task_exit(struct task* caller);
 
 /**
+ * Перевести текущий файбер в ожидание (BLOCKED) и отдать
+ * управление планировщику. Файбер не будет исполняться,
+ * пока кто-нибудь не вызовет для него `task_wake`.
+ *
+ * Перед вызовом файбер должен сообщить "будильщику" о себе
+ * (например, встать в очередь ожидания события).
+ */
+void task_park(struct task* caller);
+
+/**
+ * Разбудить файбер, ожидающий в `task_park`: перевести его
+ * из BLOCKED в RUNNABLE. Можно вызывать из любого потока,
+ * в том числе раньше, чем файбер успел уйти со своего стека:
+ * в этом случае вызов дождется окончания парковки.
+ */
+void task_wake(struct task* task);
+
+/**
  * Создать дочерний файбер.
  */
 task_t task_submit(struct task* caller, uthread_routine entry, void* argument);

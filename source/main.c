@@ -16,6 +16,7 @@ struct test {
 void test_counter();
 void test_event();
 void test_print();
+void test_park();
 
 int main() {
   log_init();
@@ -24,6 +25,7 @@ int main() {
       {"counter", test_counter},
       {  "event",   test_event},
       {  "print",   test_print},
+      {   "park",    test_park},
       {     NULL,         NULL},
   };
 

@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <sched.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -63,6 +64,13 @@ struct task {
     /** Прямо сейчас выполняется. */
     UTHREAD_RUNNING,
 
+    /**
+     * Ждет внешнего события (ввод-вывод, `event`) и не
+     * выбирается планировщиком, пока кто-то не вызовет
+     * `task_wake`, переводящий ее обратно в `RUNNABLE`.
+     */
+    UTHREAD_BLOCKED,
+
     /** Завершена и скоро станет зомби. */
     UTHREAD_FINISHED,
 
@@ -108,6 +116,15 @@ struct worker {
     size_t finished;  // Сколько задач было завершено
   } statistics;       // Локальная статистика работяги
 };
+
+/**
+ * Количество "живых" задач: отправленных в планировщик и еще
+ * не завершенных (RUNNABLE, RUNNING или BLOCKED). Рабочие
+ * потоки завершаются, только когда оно становится равным нулю,
+ * иначе сервер, все задачи которого ждут клиентов, сразу
+ * завершился бы.
+ */
+static atomic_size_t tasks_alive = 0;
 
 static struct spinlock tasks_lock;              // Защищает список задач
 static size_t next_task_index = 0;              // Для планирования round-robin
@@ -205,7 +222,13 @@ int sched_loop(void* argument) {
   for (;;) {
     struct task* task = sched_acquire_next();
     if (task == NULL) {
-      break;
+      if (atomic_load(&tasks_alive) == 0) {
+        break;  // Все задачи завершены
+      }
+      // Готовых задач нет, но есть ожидающие (BLOCKED).
+      // Уступаем процессор и пробуем снова.
+      sched_yield();
+      continue;
     }
 
     sched_switch_to(worker, task);
@@ -264,11 +287,16 @@ void sched_release(struct task* task) {
     // еще, например, разблокировать зависимые задачи.
     uthread_reset(task->thread);
     task->state = UTHREAD_ZOMBIE;
+    atomic_fetch_sub(&tasks_alive, 1);
   } else if (task->state == UTHREAD_RUNNING) {
     task->state = UTHREAD_RUNNABLE;
-  } else /* if (task->state == UTHREAD_BLOCKED) */ {
-    assert(false && "Not implemented");
+  } else {
+    // Задача сама ушла в ожидание через `task_park`.
+    // Оставляем BLOCKED: в RUNNABLE ее переведет `task_wake`.
+    assert(task->state == UTHREAD_BLOCKED);
   }
+  // Только после этого `task_wake` сможет захватить лок,
+  // то есть задача гарантированно уже ушла со своего стека.
   spinlock_unlock(&task->lock);
 }
 
@@ -286,6 +314,24 @@ void task_yield(struct task* caller) {
 void task_exit(struct task* caller) {
   sched_finish(caller);
   task_yield(caller);
+}
+
+void task_park(struct task* caller) {
+  // `caller->lock` сейчас удерживает рабочий поток (задача
+  // исполняется), поэтому `task_wake` из другого потока будет
+  // ждать на нем до `sched_release`, то есть до момента, когда
+  // задача уже ушла со стека. Так пробуждение, пришедшее раньше
+  // парковки, не теряется и задача не запускается дважды.
+  caller->state = UTHREAD_BLOCKED;
+  sched_switch_to_scheduler(caller);
+}
+
+void task_wake(struct task* task) {
+  spinlock_lock(&task->lock);
+  if (task->state == UTHREAD_BLOCKED) {
+    task->state = UTHREAD_RUNNABLE;
+  }
+  spinlock_unlock(&task->lock);
 }
 
 task_t task_submit(struct task* caller, uthread_routine entry, void* argument) {
@@ -316,6 +362,7 @@ task_t sched_try_submit(void (*entry)(), void* argument) {
       uthread_set_arg_0(task->thread, task);
       uthread_set_arg_1(task->thread, argument);
       task->state = UTHREAD_RUNNABLE;
+      atomic_fetch_add(&tasks_alive, 1);
     }
 
     spinlock_unlock(&task->lock);
