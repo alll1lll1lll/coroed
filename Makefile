@@ -32,6 +32,9 @@ TEST_OBJS := $(call to_objs, $(TEST_SRCS))
 HTTP_OBJS          := $(OBJ_DIR)/http/http.o
 COROED_SERVER_OBJS := $(OBJ_DIR)/http/coroed_server.o
 
+# Сервер на потоках ОС (для сравнения), без библиотеки корутин
+THREADED_SERVER_OBJS := $(OBJ_DIR)/http/threaded_server.o
+
 TARGET    = app
 
 run: $(BIN_DIR)/$(TARGET)
@@ -39,7 +42,7 @@ run: $(BIN_DIR)/$(TARGET)
 
 compile: clean $(BIN_DIR)/$(TARGET)
 
-server: $(BIN_DIR)/coroed_server
+server: $(BIN_DIR)/coroed_server $(BIN_DIR)/threaded_server
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -50,6 +53,9 @@ $(BIN_DIR)/$(TARGET): $(BIN_DIR) $(OBJ_DIR) $(LIB_OBJS) $(HTTP_OBJS) $(TEST_OBJS
 
 $(BIN_DIR)/coroed_server: $(BIN_DIR) $(OBJ_DIR) $(LIB_OBJS) $(HTTP_OBJS) $(COROED_SERVER_OBJS)
 	$(CC) $(LIB_OBJS) $(HTTP_OBJS) $(COROED_SERVER_OBJS) -o $@ $(LDFLAGS)
+
+$(BIN_DIR)/threaded_server: $(BIN_DIR) $(OBJ_DIR) $(HTTP_OBJS) $(THREADED_SERVER_OBJS)
+	$(CC) $(HTTP_OBJS) $(THREADED_SERVER_OBJS) -o $@ $(LDFLAGS) -pthread
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	mkdir -p $(shell dirname $@)
