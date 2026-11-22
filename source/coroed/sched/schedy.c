@@ -14,6 +14,7 @@
 #include "coroed/core/relax.h"
 #include "coroed/core/spinlock.h"
 #include "kthread.h"
+#include "poller.h"
 #include "uthread.h"
 
 enum {
@@ -34,6 +35,18 @@ enum {
    * конкуренции на спинлоках файберов.
    */
   SCHED_NEXT_MAX_ATTEMPTS = (size_t)(16),
+
+  /**
+   * Раз во сколько шагов рабочий поток неблокирующе
+   * опрашивает поллер ввода-вывода.
+   */
+  SCHED_POLL_PERIOD = (size_t)(8),
+
+  /**
+   * Сколько миллисекунд простаивающий рабочий поток ждет
+   * событий ввода-вывода, прежде чем снова поискать задачи.
+   */
+  SCHED_IDLE_POLL_TIMEOUT_MS = 10,
 };
 
 /**
@@ -158,6 +171,7 @@ void sched_worker_init(struct worker* worker, size_t index) {
 }
 
 void sched_init() {
+  poller_init();
   spinlock_init(&tasks_lock);
   for (size_t i = 0; i < SCHED_THREADS_LIMIT; ++i) {
     sched_task_init(&tasks[i]);
@@ -226,8 +240,10 @@ int sched_loop(void* argument) {
         break;  // Все задачи завершены
       }
       // Готовых задач нет, но есть ожидающие (BLOCKED).
-      // Уступаем процессор и пробуем снова.
-      sched_yield();
+      // Ждем событий ввода-вывода вместо пустого вращения:
+      // epoll_wait вернется сразу, как только какой-то
+      // дескриптор станет готов, или по таймауту.
+      poller_poll(SCHED_IDLE_POLL_TIMEOUT_MS);
       continue;
     }
 
@@ -240,10 +256,14 @@ int sched_loop(void* argument) {
 
     sched_release(task);
 
-    // Hint: где-то здесь можно было бы опросить
-    //       механизмы для неблокирующего ввода-вывода
-    //       и перевести удовлетворенные BLOCKED
-    //       потоки в RUNNABLE состояние.
+    // Задача уже ушла со стека и ее лок отпущен, поэтому
+    // здесь безопасно будить задачи, в том числе только что
+    // припаркованную. Неблокирующий опрос делаем раз в
+    // несколько шагов, чтобы при большом числе готовых задач
+    // ожидающие ввода-вывода не голодали.
+    if (worker->statistics.steps % SCHED_POLL_PERIOD == 0) {
+      poller_poll(/* timeout_ms = */ 0);
+    }
   }
 
   return 0;
@@ -433,4 +453,5 @@ void sched_destroy() {
     }
     spinlock_unlock(&task->lock);
   }
+  poller_destroy();
 }

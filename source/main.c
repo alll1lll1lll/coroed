@@ -17,6 +17,7 @@ void test_counter();
 void test_event();
 void test_print();
 void test_park();
+void test_io();
 
 int main() {
   log_init();
@@ -26,6 +27,7 @@ int main() {
       {  "event",   test_event},
       {  "print",   test_print},
       {   "park",    test_park},
+      {     "io",      test_io},
       {     NULL,         NULL},
   };
 
