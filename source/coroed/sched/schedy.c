@@ -147,8 +147,7 @@ struct worker {
  */
 static atomic_size_t tasks_alive = 0;
 
-static struct spinlock tasks_lock;              // Защищает список задач
-static size_t next_task_index = 0;              // Для планирования round-robin
+static atomic_size_t next_task_index = 0;       // Для планирования round-robin
 static struct task tasks[SCHED_THREADS_LIMIT];  // Список всех задач
 
 // Hint: для реализации более сложных схем управления, вам
@@ -180,7 +179,6 @@ void sched_worker_init(struct worker* worker, size_t index) {
 
 void sched_init() {
   poller_init();
-  spinlock_init(&tasks_lock);
   for (size_t i = 0; i < SCHED_THREADS_LIMIT; ++i) {
     sched_task_init(&tasks[i]);
   }
@@ -282,16 +280,15 @@ struct task* sched_acquire_next() {
   // так как какие-то `task->lock` могли быть отпущены.
 
   for (size_t attempt = 0; attempt < SCHED_NEXT_MAX_ATTEMPTS; ++attempt) {
-    spinlock_lock(&tasks_lock);  // Защитим `next_task_index`
+    // Глобальный лок на время прохода не берем: иначе простаивающий
+    // рабочий, просматривающий все слоты, задерживал бы остальных,
+    // даже если у них есть готовые задачи. Каждый проход начинается
+    // с общего атомарного курсора round-robin.
+    const size_t start = atomic_load_explicit(&next_task_index, memory_order_relaxed);
 
     for (size_t i = 0; i < SCHED_THREADS_LIMIT; ++i) {
-      struct task* task = &tasks[next_task_index];
-
-      // Планирование round-robin. Индекс сдвигаем всегда: в
-      // исходной версии он сдвигался только после успешного
-      // `try_lock`, и занятый слот (например, исполняющаяся
-      // задача) проверялся повторно до конца прохода.
-      next_task_index = (next_task_index + 1) % SCHED_THREADS_LIMIT;
+      const size_t index = (start + i) % SCHED_THREADS_LIMIT;
+      struct task* task = &tasks[index];
 
       // Дешевая проверка без захвата лока: большинство слотов
       // не RUNNABLE, и атомарная запись в их лок лишь гоняла бы
@@ -305,14 +302,19 @@ struct task* sched_acquire_next() {
       }
 
       if (task->thread != NULL && task->state == UTHREAD_RUNNABLE) {
-        spinlock_unlock(&tasks_lock);
+        // Следующий поиск начнется со слота после найденного.
+        // В исходной версии индекс сдвигался только после
+        // успешного `try_lock`, и занятый слот проверялся
+        // повторно до конца прохода.
+        atomic_store_explicit(
+            &next_task_index, (index + 1) % SCHED_THREADS_LIMIT, memory_order_relaxed
+        );
         return task;
       }
 
       spinlock_unlock(&task->lock);
     }
 
-    spinlock_unlock(&tasks_lock);
     SPINLOOP(2 * attempt);
   }
 

@@ -1,0 +1,35 @@
+mkdir -p build
+mkdir -p build/bin
+mkdir -p build/obj
+mkdir -p build/obj/coroed/api
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/api/event.c -o build/obj/coroed/api/event.o
+mkdir -p build/obj/coroed/api
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/api/io.c -o build/obj/coroed/api/io.o
+mkdir -p build/obj/coroed/api
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/api/log.c -o build/obj/coroed/api/log.o
+mkdir -p build/obj/coroed/api
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/api/sleep.c -o build/obj/coroed/api/sleep.o
+mkdir -p build/obj/coroed/api
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/api/task.c -o build/obj/coroed/api/task.o
+mkdir -p build/obj/coroed/core
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/core/spinlock.c -o build/obj/coroed/core/spinlock.o
+mkdir -p build/obj/coroed/sched
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/sched/kthread.c -o build/obj/coroed/sched/kthread.o
+mkdir -p build/obj/coroed/sched
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/sched/poller.c -o build/obj/coroed/sched/poller.o
+mkdir -p build/obj/coroed/sched
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/sched/schedy.c -o build/obj/coroed/sched/schedy.o
+mkdir -p build/obj/coroed/sched
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/sched/uthread.c -o build/obj/coroed/sched/uthread.o
+mkdir -p build/obj/coroed/sched
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/coroed/sched/switch.S -o build/obj/coroed/sched/switch.o
+mkdir -p build/obj/http
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/http/http.c -o build/obj/http/http.o
+mkdir -p build/obj/http
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/http/coroed_server.c -o build/obj/http/coroed_server.o
+clang build/obj/coroed/api/event.o build/obj/coroed/api/io.o build/obj/coroed/api/log.o build/obj/coroed/api/sleep.o build/obj/coroed/api/task.o build/obj/coroed/core/spinlock.o build/obj/coroed/sched/kthread.o build/obj/coroed/sched/poller.o build/obj/coroed/sched/schedy.o build/obj/coroed/sched/uthread.o  build/obj/coroed/sched/switch.o build/obj/http/http.o build/obj/http/coroed_server.o -o build/bin/coroed_server -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096
+/usr/bin/ld: warning: build/obj/coroed/sched/switch.o: missing .note.GNU-stack section implies executable stack
+/usr/bin/ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+mkdir -p build/obj/http
+clang -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -c source/http/threaded_server.c -o build/obj/http/threaded_server.o
+clang build/obj/http/http.o build/obj/http/threaded_server.o -o build/bin/threaded_server -g -I source -Wall -Werror -fno-omit-frame-pointer -O3  -DCOROED_MAX_TASKS=4096 -pthread
